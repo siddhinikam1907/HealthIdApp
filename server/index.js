@@ -1,15 +1,22 @@
+import dotenv from "dotenv";
+dotenv.config();
+import "./config/cloudinary.js";
+console.log("EMAIL_USER =", process.env.EMAIL_USER);
+console.log("EMAIL_PASS =", process.env.EMAIL_PASS);
+console.log("Cloudinary ENV:", process.env.CLOUD_NAME);
+console.log("Cloudinary ENV:", process.env.CLOUD_API_KEY);
+console.log("Cloudinary ENV:", process.env.CLOUD_API_SECRET);
 import express from "express";
 import cookieParser from "cookie-parser";
 import cors from "cors";
-import dotenv from "dotenv";
+
 import connectDB from "./config/db.js";
-import medicalRecordRoutes from "./routes/medicalRecordRoutes.js";
+import medicalRecordRoutes from "./routes/recordRoutes.js";
 import consentRoutes from "./routes/consentRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
 import hospitalRoutes from "./routes/hospitalRoutes.js";
 import patientRoutes from "./routes/patientRoutes.js";
-dotenv.config();
 
 const app = express();
 

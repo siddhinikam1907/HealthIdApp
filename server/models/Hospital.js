@@ -2,33 +2,26 @@ import mongoose from "mongoose";
 
 const hospitalSchema = new mongoose.Schema(
   {
-    hospitalName: {
-      type: String,
-      required: true,
-    },
-
-    regNumber: {
-      type: String,
-      required: true,
-      unique: true,
-    },
+    hospitalName: { type: String, required: true },
+    regNumber: { type: String, required: true, unique: true },
 
     address: String,
 
-    email: {
-      type: String,
-      required: true,
-      unique: true,
-    },
-
+    email: { type: String, required: true, unique: true },
     phone: String,
 
-    password: {
+    password: { type: String, required: true },
+    licencePdf: String,
+
+    role: {
       type: String,
-      required: true,
+      default: "HOSPITAL",
     },
 
-    licencePdf: String,
+    trustScore: {
+      type: Number,
+      default: 0,
+    },
 
     status: {
       type: String,
@@ -36,12 +29,31 @@ const hospitalSchema = new mongoose.Schema(
       default: "pending",
     },
 
-    verifiedByAdmin: {
+    verifiedByAdmin: { type: Boolean, default: false },
+
+    // ⭐ system improvements
+    lastLogin: Date,
+
+    isActive: {
       type: Boolean,
-      default: false,
+      default: true,
     },
+
+    consentRequestsToday: {
+      type: Number,
+      default: 0,
+    },
+
+    blockedUntil: Date,
   },
   { timestamps: true },
 );
+
+/* SECURITY FIX */
+hospitalSchema.methods.toJSON = function () {
+  const obj = this.toObject();
+  delete obj.password;
+  return obj;
+};
 
 export default mongoose.model("Hospital", hospitalSchema);

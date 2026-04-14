@@ -3,28 +3,44 @@ import Hospital from "../models/Hospital.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import generateHealthId from "../utils/generateHealthId.js";
-import generateOTP from "../utils/generateOTP.js";
-import sendSMS from "../utils/sendSMS.js";
+import { generateOTP } from "../utils/sendOtp.js";
+import Doctor from "../models/Doctor.js";
 import { extractTextFromPDF } from "../utils/ocrScan.js";
 import { validateHospitalData } from "../services/hospitalValidation.service.js";
+import generateQR from "../utils/qrGenerator.js";
+
+import fs from "fs";
+
 export const registerPatient = async (req, res) => {
   try {
-    const { name, phone, aadhaar } = req.body;
+    const { name, phone, aadhaar, email } = req.body;
 
-    // check existing patient using phone
-    const existingPatient = await Patient.findOne({ phone });
-    if (existingPatient) {
-      return res.status(400).json({ message: "Patient already registered" });
+    if (!name || !phone || !email || !aadhaar) {
+      return res
+        .status(400)
+        .json({ message: "Name, phone, email, and aadhaar required" });
     }
 
-    // generate HealthID
-    const healthId = generateHealthId();
+    const existingPatient = await Patient.findOne({ phone });
+    if (existingPatient) {
+      return res.status(400).json({
+        message: "Patient already registered",
+        healthId: existingPatient.healthId,
+      });
+    }
+
+    // ✅ generate healthId + QR
+    const healthId = generateHealthId(phone);
+    const qrCode = await generateQR(healthId);
 
     const patient = await Patient.create({
       name,
       phone,
       aadhaar,
+      email,
       healthId,
+      qrCode,
+      role: "PRIMARY", // ✅ ADD THIS
     });
 
     res.status(201).json({
@@ -32,72 +48,65 @@ export const registerPatient = async (req, res) => {
       patient,
     });
   } catch (error) {
+    console.error("REGISTER ERROR:", error);
     res.status(500).json({ message: "Patient registration failed" });
   }
 };
+
 export const sendPatientOTP = async (req, res) => {
   try {
-    const { phone } = req.body;
+    const { phone, email } = req.body;
 
     const patient = await Patient.findOne({ phone });
-    if (!patient) {
-      return res.status(404).json({ message: "Patient not found" });
-    }
+    if (!patient) return res.status(404).json({ message: "Patient not found" });
 
-    // generate OTP
-    const otp = generateOTP();
+    const otp = await generateOTP(patient._id, email);
 
-    // store temporarily in DB
     patient.loginOTP = otp;
-    patient.otpExpiry = Date.now() + 5 * 60 * 1000; // 5 mins
+    patient.otpExpiry = Date.now() + 5 * 60 * 1000;
     await patient.save();
 
-    // send SMS
-    await sendSMS(phone, `Your HealthID login OTP is ${otp}`);
-
-    res.status(200).json({ message: "OTP sent successfully" });
+    res.json({ message: "OTP sent successfully" });
   } catch (error) {
+    console.error("OTP ERROR:", error);
     res.status(500).json({ message: "OTP sending failed" });
   }
 };
+
 export const verifyPatientOTP = async (req, res) => {
   try {
     const { phone, otp } = req.body;
 
     const patient = await Patient.findOne({ phone });
-    if (!patient) {
-      return res.status(404).json({ message: "Patient not found" });
-    }
+    if (!patient) return res.status(404).json({ message: "Patient not found" });
 
-    if (patient.loginOTP !== otp) {
+    if (patient.loginOTP !== otp)
       return res.status(400).json({ message: "Invalid OTP" });
-    }
 
-    if (patient.otpExpiry < Date.now()) {
+    if (patient.otpExpiry < Date.now())
       return res.status(400).json({ message: "OTP expired" });
-    }
 
-    // clear OTP
     patient.loginOTP = null;
     patient.otpExpiry = null;
     await patient.save();
 
-    // create JWT
     const token = jwt.sign(
       { id: patient._id, role: "patient" },
       process.env.JWT_SECRET,
       { expiresIn: "7d" },
     );
 
-    res.status(200).json({
-      message: "Login successful",
-      token,
-      patient,
-    });
-  } catch (error) {
+    res.json({ message: "Login successful", token, patient });
+  } catch {
     res.status(500).json({ message: "Login failed" });
   }
 };
+
+/* ======================================================
+   HOSPITAL REGISTER
+====================================================== */
+import cloudinary from "../config/cloudinary.js";
+import { uploadBufferToCloudinary } from "../middleware/uploadMiddleware.js";
 
 export const registerHospital = async (req, res) => {
   try {
@@ -111,29 +120,37 @@ export const registerHospital = async (req, res) => {
       doctors,
     } = req.body;
 
-    const filePath = req.file.path; // multer upload
+    if (!req.file)
+      return res.status(400).json({ message: "Licence file required" });
 
-    const existing = await Hospital.findOne({ email });
-    if (existing) {
-      return res.status(400).json({ message: "Hospital already exists" });
-    }
+    /* ================= OCR FROM BUFFER ================= */
+    const tempPath = `uploads/temp-${Date.now()}.pdf`;
+    fs.writeFileSync(tempPath, req.file.buffer);
 
-    // STEP 1: OCR
-    const licenseText = await extractTextFromPDF(filePath);
+    const licenseText = await extractTextFromPDF(tempPath);
+    fs.unlinkSync(tempPath);
 
-    // STEP 2: VALIDATION ENGINE
+    /* ================= VALIDATION ENGINE ================= */
+    let parsedDoctors = [];
+    try {
+      parsedDoctors = doctors ? JSON.parse(doctors) : [];
+    } catch {}
+
     const validation = await validateHospitalData({
       regNumber,
-      doctors,
+      doctors: parsedDoctors,
       licenseText,
       email,
     });
 
-    // STEP 3: HASH PASSWORD
-    const hashedPassword = await bcrypt.hash(password, 10);
+    /* ================= UPLOAD TO CLOUDINARY ================= */
+    const uploadResult = await uploadBufferToCloudinary(
+      req.file.buffer,
+      "healthid/licenses",
+    );
 
-    // STEP 4: STATUS DECISION
-    const status = validation.autoApprove ? "PENDING" : "REJECTED_AUTO";
+    /* ================= SAVE HOSPITAL ================= */
+    const hashedPassword = await bcrypt.hash(password, 10);
 
     const hospital = await Hospital.create({
       hospitalName,
@@ -142,57 +159,76 @@ export const registerHospital = async (req, res) => {
       email,
       phone,
       password: hashedPassword,
-      licenseFile: filePath,
-      status,
-      trustScore: validation.score,
-      verificationFlags: validation.flags,
+      licencePdf: uploadResult.secure_url,
+      trustScore: validation.trustScore,
+      status: validation.status,
+      verifiedByAdmin: validation.status === "approved",
     });
 
     res.status(201).json({
-      message:
-        status === "PENDING"
-          ? "Submitted for admin approval"
-          : "Rejected automatically due to invalid documents",
       hospital,
+      message: "Hospital submitted successfully",
+      status: hospital.status,
     });
   } catch (error) {
-    console.log(error);
-    res.status(500).json({ message: "Registration failed" });
+    console.log("Hospital Register Error:", error);
+    res.status(500).json({ message: "Hospital registration failed" });
   }
 };
 
+/* ======================================================
+   HOSPITAL LOGIN (AFTER ADMIN APPROVAL)
+====================================================== */
 export const loginHospital = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    const hospital = await Hospital.findOne({ email });
-    if (!hospital) {
-      return res.status(404).json({ message: "Hospital not found" });
-    }
-
-    if (hospital.status !== "approved") {
-      return res.status(403).json({
-        message: "Hospital not verified by admin yet",
+    if (!email || !password)
+      return res.status(400).json({
+        message: "Email and password are required",
       });
-    }
 
+    /* ================= CHECK HOSPITAL ================= */
+    const hospital = await Hospital.findOne({ email });
+
+    if (!hospital)
+      return res.status(404).json({ message: "Hospital not found" });
+
+    /* ================= CHECK STATUS ================= */
+    if (hospital.status === "pending")
+      return res.status(403).json({
+        message: "Hospital not approved by admin yet",
+      });
+
+    if (hospital.status === "rejected")
+      return res.status(403).json({
+        message: "Hospital registration rejected by admin",
+      });
+
+    /* ================= PASSWORD CHECK ================= */
     const isMatch = await bcrypt.compare(password, hospital.password);
-    if (!isMatch) {
-      return res.status(400).json({ message: "Invalid credentials" });
-    }
 
+    if (!isMatch)
+      return res.status(401).json({ message: "Invalid credentials" });
+
+    /* ================= GENERATE TOKEN ================= */
     const token = jwt.sign(
       { id: hospital._id, role: "hospital" },
       process.env.JWT_SECRET,
       { expiresIn: "7d" },
     );
 
+    /* ================= REMOVE PASSWORD ================= */
+    const hospitalData = hospital.toObject();
+    delete hospitalData.password;
+
     res.status(200).json({
-      message: "Login successful",
+      message: "Hospital login successful",
       token,
-      hospital,
+      hospital: hospitalData,
     });
   } catch (error) {
-    res.status(500).json({ message: "Login failed" });
+    console.log("Hospital Login Error:", error);
+    res.status(500).json({ message: "Hospital login failed" });
   }
 };

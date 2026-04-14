@@ -3,20 +3,19 @@ import {
   requestConsent,
   verifyConsentOTP,
 } from "../controllers/consentController.js";
-import hospitalAuth from "../middleware/hospitalAuth.js";
+
+import { protectHospital } from "../middleware/hospitalAuth.js";
 
 const router = express.Router();
 
-/* ======================================================
-   1️⃣ Hospital requests access → Send OTP to patient
-   POST /api/consent/request
-====================================================== */
-router.post("/request", hospitalAuth, requestConsent);
+/* =========================
+   REQUEST CONSENT (OTP)
+========================= */
+router.post("/request", protectHospital, requestConsent);
 
-/* ======================================================
-   2️⃣ Hospital verifies OTP → Access granted
-   POST /api/consent/verify
-====================================================== */
-router.post("/verify", hospitalAuth, verifyConsentOTP);
+/* =========================
+   VERIFY OTP (GRANT ACCESS)
+========================= */
+router.post("/verify", protectHospital, verifyConsentOTP);
 
 export default router;

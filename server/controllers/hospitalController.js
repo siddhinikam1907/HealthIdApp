@@ -1,11 +1,10 @@
 import Hospital from "../models/Hospital.js";
 import HospitalPatient from "../models/HospitalPatient.js";
 import Patient from "../models/Patient.js";
-import MedicalRecord from "../models/MedicalRecord.js";
 
-/* ======================================================
-   GET HOSPITAL PROFILE
-====================================================== */
+/* =========================
+   🏥 PROFILE
+========================= */
 export const getHospitalProfile = async (req, res) => {
   try {
     const hospital = await Hospital.findById(req.hospital._id).select(
@@ -13,26 +12,27 @@ export const getHospitalProfile = async (req, res) => {
     );
 
     res.status(200).json(hospital);
-  } catch (error) {
+  } catch (err) {
     res.status(500).json({ message: "Failed to fetch profile" });
   }
 };
 
-/* ======================================================
-   SEARCH PATIENT BY HEALTH ID (AUTO SAVE DIRECTORY)
-====================================================== */
+/* =========================
+   🔎 SEARCH PATIENT (BY HEALTH ID)
+========================= */
 export const searchPatientByHealthId = async (req, res) => {
   try {
     const { healthId } = req.body;
 
     const patient = await Patient.findOne({ healthId }).select(
-      "name healthId phone bloodGroup",
+      "name healthId phone bloodGroup emergencyContact",
     );
 
     if (!patient) {
       return res.status(404).json({ message: "Patient not found" });
     }
 
+    // 🧠 AUTO SAVE TO HOSPITAL DIRECTORY
     await HospitalPatient.findOneAndUpdate(
       {
         hospitalId: req.hospital._id,
@@ -45,41 +45,34 @@ export const searchPatientByHealthId = async (req, res) => {
         phone: patient.phone,
         lastVisit: new Date(),
       },
-      { upsert: true, new: true },
+      {
+        upsert: true,
+        returnDocument: "after", // 🔥 replaces "new: true"
+      },
     );
 
     res.status(200).json(patient);
-  } catch (error) {
+  } catch (err) {
     res.status(500).json({ message: "Search failed" });
   }
 };
 
-/* ======================================================
-   GET HOSPITAL PATIENT DIRECTORY
-====================================================== */
+/* =========================
+   📁 HOSPITAL PATIENT DIRECTORY
+========================= */
 export const getHospitalPatients = async (req, res) => {
   try {
-    const patients = await HospitalPatient.find({
+    const data = await HospitalPatient.find({
       hospitalId: req.hospital._id,
+    })
+      .populate("patientId", "name healthId bloodGroup phone emergencyContact")
+      .sort({ lastVisit: -1 }); // 🔥 latest first
+
+    res.status(200).json({
+      total: data.length,
+      patients: data,
     });
-
-    res.status(200).json(patients);
-  } catch (error) {
+  } catch (err) {
     res.status(500).json({ message: "Failed to fetch patients" });
-  }
-};
-
-/* ======================================================
-   GET UPLOADED RECORDS
-====================================================== */
-export const getMyUploadedRecords = async (req, res) => {
-  try {
-    const records = await MedicalRecord.find({
-      hospital: req.hospital._id,
-    }).populate("patient", "name healthId");
-
-    res.status(200).json(records);
-  } catch (error) {
-    res.status(500).json({ message: "Failed to fetch records" });
   }
 };

@@ -1,4 +1,6 @@
 import express from "express";
+import { adminLogin } from "../controllers/adminController.js";
+import { protectAdmin } from "../middleware/adminMiddleware.js";
 import {
   getAllHospitals,
   getHospitalDetails,
@@ -8,16 +10,15 @@ import {
 
 const router = express.Router();
 
-// View all hospitals
-router.get("/hospitals", getAllHospitals);
+/* ======================================================
+   ADMIN LOGIN
+====================================================== */
+router.post("/login", adminLogin);
 
-// View single hospital
-router.get("/hospital/:id", getHospitalDetails);
+router.get("/hospitals", protectAdmin, getAllHospitals);
+router.get("/hospitals/:id", protectAdmin, getHospitalDetails);
 
-// Approve hospital
-router.put("/approve/:id", approveHospital);
-
-// Reject hospital
-router.put("/reject/:id", rejectHospital);
+router.put("/hospitals/:id/approve", protectAdmin, approveHospital);
+router.put("/hospitals/:id/reject", protectAdmin, rejectHospital);
 
 export default router;

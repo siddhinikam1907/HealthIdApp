@@ -1,36 +1,37 @@
 import fs from "fs";
-import pdfParse from "pdf-parse";
 import Tesseract from "tesseract.js";
+import pdfPoppler from "pdf-poppler";
 
 /* ======================================================
-   EXTRACT TEXT FROM PDF (PRIMARY METHOD)
+   ALWAYS USE OCR FOR PDFs (NO pdf-parse)
 ====================================================== */
 export const extractTextFromPDF = async (filePath) => {
   try {
-    const dataBuffer = fs.readFileSync(filePath);
-    const pdfData = await pdfParse(dataBuffer);
+    const outputDir = "uploads/converted";
 
-    if (pdfData.text && pdfData.text.trim().length > 0) {
-      return pdfData.text;
+    if (!fs.existsSync(outputDir)) {
+      fs.mkdirSync(outputDir, { recursive: true });
     }
 
-    // If PDF has no selectable text (scanned document)
-    return await extractTextFromScannedPDF(filePath);
-  } catch (error) {
-    console.log("PDF extraction error:", error.message);
-    return "";
-  }
-};
+    const options = {
+      format: "png",
+      out_dir: outputDir,
+      out_prefix: "page",
+      page: 1, // first page is enough for license validation
+    };
 
-/* ======================================================
-   OCR FOR SCANNED PDFs (IMAGE-BASED PDF FALLBACK)
-====================================================== */
-const extractTextFromScannedPDF = async (filePath) => {
-  try {
-    // Convert first page or whole file buffer to OCR
-    const result = await Tesseract.recognize(filePath, "eng", {
-      logger: (m) => console.log(m), // optional progress logs
+    console.log("📄 Converting PDF → Image...");
+    await pdfPoppler.convert(filePath, options);
+
+    const imagePath = `${outputDir}/page-1.png`;
+
+    console.log("🔎 Running OCR...");
+    const result = await Tesseract.recognize(imagePath, "eng", {
+      logger: (m) => console.log("OCR:", m.status),
     });
+
+    // cleanup temp image
+    if (fs.existsSync(imagePath)) fs.unlinkSync(imagePath);
 
     return result.data.text || "";
   } catch (error) {
@@ -40,12 +41,12 @@ const extractTextFromScannedPDF = async (filePath) => {
 };
 
 /* ======================================================
-   OPTIONAL: GENERIC IMAGE OCR FUNCTION (FOR LICENSE IMAGES)
+   IMAGE OCR (for doctor uploads later)
 ====================================================== */
 export const extractTextFromImage = async (imagePath) => {
   try {
     const result = await Tesseract.recognize(imagePath, "eng", {
-      logger: (m) => console.log(m),
+      logger: (m) => console.log("OCR:", m.status),
     });
 
     return result.data.text || "";

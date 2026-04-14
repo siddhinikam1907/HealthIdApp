@@ -1,10 +1,9 @@
 import mongoose from "mongoose";
-
 const otpSchema = new mongoose.Schema(
   {
     patient: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
+      ref: "Patient", // ✅ FIXED
       required: true,
     },
     otp: {
@@ -18,5 +17,4 @@ const otpSchema = new mongoose.Schema(
   },
   { timestamps: true },
 );
-
 export default mongoose.model("OTP", otpSchema);

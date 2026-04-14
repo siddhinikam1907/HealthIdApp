@@ -1,29 +1,33 @@
 import multer from "multer";
-import { CloudinaryStorage } from "multer-storage-cloudinary";
+import streamifier from "streamifier";
 import cloudinary from "../config/cloudinary.js";
 
 /* ======================================================
-   CLOUDINARY STORAGE CONFIG
+   MEMORY STORAGE → used for BOTH flows
 ====================================================== */
-const storage = new CloudinaryStorage({
-  cloudinary: cloudinary,
-  params: {
-    folder: "healthid", // folder in cloudinary
+const storage = multer.memoryStorage();
 
-    allowed_formats: ["jpg", "png", "jpeg", "pdf"],
-
-    resource_type: "auto", // VERY IMPORTANT for pdf + images
-
-    public_id: (req, file) => {
-      return Date.now() + "-" + file.originalname;
-    },
-  },
+export const memoryUpload = multer({
+  storage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
 });
 
 /* ======================================================
-   MULTER INSTANCE
+   BUFFER → CLOUDINARY UPLOAD FUNCTION
 ====================================================== */
-export const upload = multer({
-  storage: storage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
-});
+export const uploadBufferToCloudinary = (buffer, folder) => {
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      {
+        folder,
+        resource_type: "auto",
+      },
+      (error, result) => {
+        if (result) resolve(result);
+        else reject(error);
+      },
+    );
+
+    streamifier.createReadStream(buffer).pipe(stream);
+  });
+};

@@ -26,10 +26,14 @@ router.post("/patient/verify-otp", verifyPatientOTP);
    HOSPITAL AUTH ROUTES
 ====================================================== */
 
-// Hospital registration (goes to admin approval)
-router.post("/hospital/register", registerHospital);
+import { memoryUpload } from "../middleware/uploadMiddleware.js";
 
-// Hospital login (after admin approval)
+router.post(
+  "/hospital/register",
+  memoryUpload.single("file"),
+  registerHospital,
+);
+
 router.post("/hospital/login", loginHospital);
 
 export default router;

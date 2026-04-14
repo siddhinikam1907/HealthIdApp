@@ -1,14 +1,17 @@
 import Patient from "../models/Patient.js";
 import Consent from "../models/Consent.js";
-import generateOTP from "../utils/generateOTP.js";
-import sendSMS from "../utils/sendSMS.js";
+import { generateOTP } from "../utils/sendOtp.js";
+import sendEmail from "../utils/sendEmail.js";
 
-/* ======================================================
-   REQUEST CONSENT (SEND OTP)
-====================================================== */
+/* =========================
+   REQUEST CONSENT
+========================= */
 export const requestConsent = async (req, res) => {
   try {
     const { healthId } = req.body;
+
+    console.log("healthId:", healthId);
+    console.log("hospital:", req.hospital);
 
     const patient = await Patient.findOne({ healthId });
 
@@ -16,36 +19,29 @@ export const requestConsent = async (req, res) => {
       return res.status(404).json({ message: "Patient not found" });
     }
 
-    const otp = generateOTP();
+    const otp = await generateOTP(patient._id, patient.email);
 
     const consent = await Consent.create({
       patientId: patient._id,
       hospitalId: req.hospital._id,
       otp,
       status: "pending",
-      expiresAt: Date.now() + 5 * 60 * 1000,
+      expiresAt: new Date(Date.now() + 5 * 60 * 1000),
     });
 
-    await sendSMS(
-      patient.phone,
-      `HealthID Access Request 🚨
-Hospital: ${req.hospital.hospitalName}
-OTP: ${otp}
-Valid for 5 minutes`,
-    );
-
-    res.status(200).json({
+    return res.status(200).json({
       message: "OTP sent successfully",
       consentId: consent._id,
     });
   } catch (error) {
-    res.status(500).json({ message: "Consent request failed" });
+    console.log("🔥 CONSENT ERROR:", error);
+    return res.status(500).json({ message: error.message });
   }
 };
 
-/* ======================================================
-   VERIFY OTP (GRANT ACCESS)
-====================================================== */
+/* =========================
+   VERIFY OTP + GRANT ACCESS
+========================= */
 export const verifyConsentOTP = async (req, res) => {
   try {
     const { consentId, otp } = req.body;
@@ -64,14 +60,19 @@ export const verifyConsentOTP = async (req, res) => {
       return res.status(400).json({ message: "Invalid OTP" });
     }
 
+    // 🔥 IMPORTANT FIX: TIME-BASED ACCESS
     consent.status = "approved";
+    consent.accessStart = new Date();
+    consent.accessEnd = new Date(Date.now() + 30 * 60 * 1000); // 30 min access
+
     await consent.save();
 
     res.status(200).json({
-      message: "Access granted",
+      message: "Access granted for 30 minutes",
       access: true,
     });
   } catch (error) {
+    console.log("CONSENT ERROR:", error);
     res.status(500).json({ message: "OTP verification failed" });
   }
 };

@@ -1,0 +1,119 @@
+import React, { useState } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
+import { motion } from 'framer-motion';
+import api from '../../api/axios';
+import { useAuth } from '../../context/AuthContext';
+import { FaPhoneAlt, FaKey } from 'react-icons/fa';
+
+const PatientLogin = () => {
+  const [phone, setPhone] = useState('');
+  const [otp, setOtp] = useState('');
+  const [devOTP, setDevOTP] = useState('');
+  const [step, setStep] = useState(1);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const { login } = useAuth();
+  const navigate = useNavigate();
+
+  const handleSendOTP = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await api.post('/auth/patient/send-otp', { phone });
+      setDevOTP(res.data.devOTP || '');
+      setStep(2);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to send OTP');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVerifyOTP = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await api.post('/auth/patient/verify-otp', { phone, otp });
+      login(res.data.patient, res.data.token, 'patient');
+      navigate('/patient/dashboard');
+    } catch (err) {
+      setError(err.response?.data?.message || 'Invalid OTP');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <motion.div 
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0 }}
+      style={{ maxWidth: '400px', margin: '4rem auto' }}
+    >
+      <div className="glass-panel">
+        <h2 className="heading-gradient text-center" style={{ marginBottom: '2rem' }}>Patient Access</h2>
+        
+        {error && <div style={{ color: 'var(--danger)', marginBottom: '1rem', textAlign: 'center' }}>{error}</div>}
+
+        {step === 1 ? (
+          <form onSubmit={handleSendOTP} style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+            <div className="input-group">
+              <label style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Registered Phone</label>
+              <div style={{ position: 'relative', marginTop: '0.5rem' }}>
+                <FaPhoneAlt style={{ position: 'absolute', top: '14px', left: '16px', color: 'var(--text-secondary)' }} />
+                <input 
+                  type="tel" 
+                  className="glass-input" 
+                  style={{ paddingLeft: '45px' }} 
+                  placeholder="Enter your phone number" 
+                  required 
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)} 
+                />
+              </div>
+            </div>
+            <button type="submit" className="primary-btn" disabled={loading} style={{ width: '100%' }}>
+              {loading ? 'Sending OTP...' : 'Send OTP'}
+            </button>
+          </form>
+        ) : (
+          <form onSubmit={handleVerifyOTP} style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+            {devOTP && (
+              <div style={{ background: 'rgba(0, 242, 254, 0.1)', border: '1px solid rgba(0, 242, 254, 0.3)', borderRadius: '8px', padding: '1rem', textAlign: 'center' }}>
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>🧪 Dev Mode — Your OTP</p>
+                <p style={{ fontSize: '1.5rem', fontWeight: 'bold', letterSpacing: '4px', color: 'var(--secondary-color)' }}>{devOTP}</p>
+              </div>
+            )}
+            <div className="input-group">
+              <label style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Enter OTP</label>
+              <div style={{ position: 'relative', marginTop: '0.5rem' }}>
+                <FaKey style={{ position: 'absolute', top: '14px', left: '16px', color: 'var(--text-secondary)' }} />
+                <input 
+                  type="text" 
+                  className="glass-input" 
+                  style={{ paddingLeft: '45px', letterSpacing: '2px' }} 
+                  placeholder="000000" 
+                  required 
+                  value={otp}
+                  onChange={(e) => setOtp(e.target.value)} 
+                />
+              </div>
+              <p style={{ fontSize: '0.8rem', color: 'var(--success)', marginTop: '0.5rem' }}>OTP sent to {phone}</p>
+            </div>
+            <button type="submit" className="primary-btn" disabled={loading} style={{ width: '100%' }}>
+              {loading ? 'Verifying...' : 'Verify & Login'}
+            </button>
+          </form>
+        )}
+
+        <p className="text-center" style={{ marginTop: '2rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+          Don't have a Health ID? <Link to="/patient/register" style={{ color: 'var(--secondary-color)' }}>Register</Link>
+        </p>
+      </div>
+    </motion.div>
+  );
+};
+
+export default PatientLogin;
