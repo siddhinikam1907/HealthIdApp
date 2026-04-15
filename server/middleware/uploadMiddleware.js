@@ -20,11 +20,14 @@ export const uploadBufferToCloudinary = (buffer, folder) => {
     const stream = cloudinary.uploader.upload_stream(
       {
         folder,
-        resource_type: "auto",
+        resource_type: "raw", // ✅ FIXED (VERY IMPORTANT)
       },
       (error, result) => {
-        if (result) resolve(result);
-        else reject(error);
+        if (error) {
+          console.log("Cloudinary upload error:", error);
+          return reject(error);
+        }
+        resolve(result);
       },
     );
 

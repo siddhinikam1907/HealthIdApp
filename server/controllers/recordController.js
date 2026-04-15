@@ -4,7 +4,7 @@ import Consent from "../models/Consent.js";
 import { uploadBufferToCloudinary } from "../middleware/uploadMiddleware.js";
 
 /* =========================
-   UPLOAD RECORD (SECURE)
+   UPLOAD RECORD (SECURE FIXED)
 ========================= */
 export const uploadRecord = async (req, res) => {
   try {
@@ -18,12 +18,23 @@ export const uploadRecord = async (req, res) => {
     const consent = await Consent.findOne({
       patientId: patient._id,
       hospitalId: req.hospital._id,
-      status: "approved",
     });
 
-    // 🔥 ACCESS CHECK ADDED
-    if (!consent || consent.accessEnd < Date.now()) {
-      return res.status(403).json({ message: "Access denied or expired" });
+    if (!consent) {
+      return res.status(403).json({ message: "No consent found" });
+    }
+
+    // ✅ FIX 1: status check
+    if (consent.status !== "approved") {
+      return res.status(403).json({ message: "Consent not approved" });
+    }
+
+    // ✅ FIX 2: proper Date comparison
+    if (
+      !consent.accessEnd ||
+      new Date(consent.accessEnd).getTime() < Date.now()
+    ) {
+      return res.status(403).json({ message: "Access expired" });
     }
 
     if (!req.file) {
@@ -41,31 +52,28 @@ export const uploadRecord = async (req, res) => {
       recordType,
       fileUrl: uploadResult.secure_url,
       notes,
+      extractedText: "",
+      aiSummary: "",
     });
 
-    res.status(201).json({
-      message: "Record uploaded",
+    return res.status(201).json({
+      message: "Record uploaded successfully",
       record,
     });
   } catch (err) {
-    res.status(500).json({ message: "Upload failed" });
+    console.log("UPLOAD ERROR:", err);
+    return res.status(500).json({ message: "Upload failed" });
   }
 };
 
 /* =========================
-   GET RECORDS (SECURE)
+   GET RECORDS (SECURE FIXED)
 ========================= */
 export const getPatientRecords = async (req, res) => {
   try {
     const { healthId } = req.params;
 
-    if (!healthId) {
-      return res.status(400).json({ message: "healthId required" });
-    }
-
-    const patient = await Patient.findOne({
-      healthId: healthId.trim(),
-    });
+    const patient = await Patient.findOne({ healthId: healthId.trim() });
 
     if (!patient) {
       return res.status(404).json({ message: "Patient not found" });
@@ -74,14 +82,20 @@ export const getPatientRecords = async (req, res) => {
     const consent = await Consent.findOne({
       patientId: patient._id,
       hospitalId: req.hospital._id,
-      status: "approved",
     });
 
-    if (!consent || !consent.accessEnd) {
+    if (!consent) {
       return res.status(403).json({ message: "No consent found" });
     }
 
-    if (new Date(consent.accessEnd) < new Date()) {
+    if (consent.status !== "approved") {
+      return res.status(403).json({ message: "Consent not approved" });
+    }
+
+    if (
+      !consent.accessEnd ||
+      new Date(consent.accessEnd).getTime() < Date.now()
+    ) {
       return res.status(403).json({ message: "Access expired" });
     }
 
@@ -92,12 +106,14 @@ export const getPatientRecords = async (req, res) => {
     return res.json({
       accessRemainingMinutes: Math.max(
         0,
-        Math.floor((consent.accessEnd - Date.now()) / 60000),
+        Math.floor(
+          (new Date(consent.accessEnd).getTime() - Date.now()) / 60000,
+        ),
       ),
       records,
     });
   } catch (err) {
     console.log("ERROR:", err);
-    res.status(500).json({ message: "Fetch failed" });
+    return res.status(500).json({ message: "Fetch failed" });
   }
 };

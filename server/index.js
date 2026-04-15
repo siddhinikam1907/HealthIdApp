@@ -17,7 +17,7 @@ import authRoutes from "./routes/authRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
 import hospitalRoutes from "./routes/hospitalRoutes.js";
 import patientRoutes from "./routes/patientRoutes.js";
-
+import aiRoutes from "./routes/aiRoutes.js";
 const app = express();
 
 /* ======================================================
@@ -51,6 +51,7 @@ app.use("/api/consent", consentRoutes);
 app.use("/api/records", medicalRecordRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/ai", aiRoutes);
 const PORT = process.env.PORT || 8000;
 
 const startServer = async () => {
